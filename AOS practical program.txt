@@ -1,0 +1,424 @@
+Q
+// display a given message 'n' times 
+
+#include <stdio.h>
+#include <setjmp.h>
+
+// Global variables
+jmp_buf jumpBuffer;
+
+void printMessage(int n, const char* message) {
+    if (n <= 0) {
+        // Return to the setjmp point
+        longjmp(jumpBuffer, 1);
+    }
+
+    printf("%s\n", message);
+
+    // Decrement n and recursively call printMessage
+    printMessage(n - 1, message);
+}
+
+int main() {
+    // Setjmp point
+    if (setjmp(jumpBuffer) == 0) {
+        // Prompt user for input
+        int n;
+        printf("Enter the number of times to display the message: ");
+        scanf("%d", &n);
+
+        // Clear input buffer
+        while (getchar() != '\n');
+
+        // Prompt user for message
+        char message[256];
+        printf("Enter the message to display: ");
+        fgets(message, sizeof(message), stdin);
+
+        // Remove trailing newline character from message
+        message[strcspn(message, "\n")] = '\0';
+
+        // Call printMessage
+        printMessage(n, message);
+    }
+
+    return 0;
+}
+------------------------------------------------------------------------------------------------------------------------Q
+// blocks the SIGQUIT signal 
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
+
+void handleSignal(int signal) 
+{
+    if (signal == SIGQUIT) {
+        printf("Received SIGQUIT signal. Unblocking the signal.\n");
+        sigset_t unblockSet;
+        sigemptyset(&unblockSet);
+        sigaddset(&unblockSet, SIGQUIT);
+        sigprocmask(SIG_UNBLOCK, &unblockSet, NULL);
+    }
+}
+
+int main() {
+    // Set up signal handler
+    signal(SIGQUIT, handleSignal);
+
+    // Block SIGQUIT signal
+    sigset_t blockSet;
+    sigemptyset(&blockSet);
+    sigaddset(&blockSet, SIGQUIT);
+    sigprocmask(SIG_BLOCK, &blockSet, NULL);
+
+    printf("SIGQUIT signal is blocked for 5 seconds.\n");
+
+    sleep(5);
+
+    // Check for pending signals
+    sigset_t pendingSet;
+    sigpending(&pendingSet);
+
+    if (sigismember(&pendingSet, SIGQUIT)) {
+        printf("SIGQUIT signal occurred during the blocking period.\n");
+        printf("Unblocking the signal.\n");
+        sigprocmask(SIG_UNBLOCK, &blockSet, NULL);
+    }
+
+    // Wait for another occurrence of SIGQUIT signal to terminate the program
+    pause();
+
+    printf("Program terminated.\n");
+
+    return 0;
+}
+//press Ctrl+\ (SIGQUIT), the program will unblock the signal. If you press Ctrl+\ again, the program will terminate. 
+------------------------------------------------------------------------------------------------------------------------
+Q
+//reads the contents of the current directory  displays names ,count of files
+#include <stdio.h>
+#include <dirent.h>
+
+int main() {
+    DIR *dir;
+    struct dirent *entry;
+    int fileCount = 0;
+    int dirCount = 0;
+
+    // Open the current directory
+    dir = opendir(".");
+
+    if (dir == NULL) {
+        printf("Error opening the directory.\n");
+        return 1;
+    }
+
+    // Read directory entries
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_REG) {
+            // Entry is a file
+            printf("File: %s\n", entry->d_name);
+            fileCount++;
+        } else if (entry->d_type == DT_DIR) {
+            // Entry is a subdirectory
+            printf("Directory: %s\n", entry->d_name);
+            dirCount++;
+        }
+    }
+
+    // Close the directory
+    closedir(dir);
+
+    printf("Total files: %d\n", fileCount);
+    printf("Total directories: %d\n", dirCount);
+
+    return 0;
+}
+------------------------------------------------------------------------------------------------------------------------
+Q
+//multiple files as command line arguments and prints their sizes:
+
+#include <stdio.h>
+
+int main(int argc, char *argv[]) {
+    // Iterate through the command line arguments
+    for (int i = 1; i < argc; i++) {
+        FILE *file = fopen(argv[i], "r");
+        if (file == NULL) {
+            printf("Unable to open file: %s\n", argv[i]);
+        } else {
+            // Move the file pointer to the end to get the size
+            fseek(file, 0, SEEK_END);
+            long size = ftell(file);
+            fclose(file);
+            printf("File: %s, Size: %ld bytes\n", argv[i], size);
+        }
+    }
+
+    return 0;
+}
+//You can run this program and provide the file names as comman
+------------------------------------------------------------------------------------------------------------------------
+Q
+//last access and modified time of a given file
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+int main() {
+    // File path
+    const char *filePath = "AI practical/demopy.py";
+
+    // Get file information
+    struct stat fileInfo;
+    if (stat(filePath, &fileInfo) == -1) {
+        printf("Failed to get file information.\n");
+        return 1;
+    }
+
+    // Display last access and modified time
+    printf("Last Access Time: %s", ctime(&fileInfo.st_atime));
+    printf("Last Modified Time: %s", ctime(&fileInfo.st_mtime));
+
+    return 0;
+}
+//to run *filePath = "enter path of the file ";
+------------------------------------------------------------------------------------------------------------------------Q
+// maps a given file in memory and displays the content of the mapped file in reverse:
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        printf("Please provide the file name as a command line argument.\n");
+        return 1;
+    }
+
+    // Open the file
+    int file = open(argv[1], O_RDONLY);
+    if (file == -1) {
+        printf("Unable to open the file.\n");
+        return 1;
+    }
+
+    // Get the size of the file
+    struct stat st;
+    if (fstat(file, &st) == -1) {
+        printf("Unable to get file size.\n");
+        close(file);
+        return 1;
+    }
+    off_t size = st.st_size;
+
+    // Map the file into memory
+    char *fileData = mmap(NULL, size, PROT_READ, MAP_PRIVATE, file, 0);
+    if (fileData == MAP_FAILED) {
+        printf("Unable to map the file into memory.\n");
+        close(file);
+        return 1;
+    }
+
+    // Print the content of the mapped file in reverse
+    for (off_t i = size - 1; i >= 0; i--) {
+        printf("%c", fileData[i]);
+    }
+
+    // Unmap the file from memory
+    munmap(fileData, size);
+
+    // Close the file
+    close(file);
+
+    return 0;
+}
+//You can run this program and provide the file name as a command line argument. It will map the file into memory and display its content in reverse. 
+------------------------------------------------------------------------------------------------------------------------Q
+//set the resource limit for files and memory associated with a process:
+
+#include <stdio.h>
+#include <sys/resource.h>
+
+int main() {
+    // Get the current resource limit
+    struct rlimit limit;
+    getrlimit(RLIMIT_MEMLOCK, &limit);
+
+    // Print the current resource limit
+    printf("The current resource limit for files and memory is: %lu\n", limit.rlim_cur);
+
+    // Set a new resource limit
+    limit.rlim_cur = 1024 * 1024; // 1MB
+    setrlimit(RLIMIT_MEMLOCK, &limit);
+
+    // Get the updated resource limit
+    getrlimit(RLIMIT_MEMLOCK, &limit);
+
+    // Print the updated resource limit
+    printf("The updated resource limit for files and memory is: %lu\n", limit.rlim_cur);
+
+    return 0;
+}
+------------------------------------------------------------------------------------------------------------------------Q
+
+//creates two files with the specified permissions:
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+int main() {
+    // Create the first file with read and write permissions for owner, group, and other users
+    int file1 = open("file1.txt", O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+    if (file1 == -1) {
+        printf("Oops! Unable to create file1.txt.\n");
+        return 1;
+    }
+
+    // Turn on the group-ID and turn off group execute permission for the first file
+    if (chmod("file1.txt", S_ISGID | S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) == -1) {
+        printf("Oops! Unable to modify permissions for file1.txt.\n");
+        return 1;
+    }
+
+    // Create the second file with read and write permissions only for the owner
+    umask(S_IWGRP | S_IROTH | S_IWOTH);
+    int file2 = open("file2.txt", O_CREAT, S_IRUSR | S_IWUSR);
+    if (file2 == -1) {
+        printf("Oops! Unable to create file2.txt.\n");
+        return 1;
+    }
+
+    // Set the read permission for all users for the second file
+    if (chmod("file2.txt", S_IRUSR | S_IRGRP | S_IROTH) == -1) {
+        printf("Oops! Unable to modify permissions for file2.txt.\n");
+        return 1;
+    }
+
+    printf("Done! Files created with the specified permissions.\n");
+
+    return 0;
+}
+//This program creates two files: file1.txt and file2.txt. The first file has read and write permissions for the owner, group, and other users. The second file has read and write permissions only for the owner. The program then modifies the permissions using the chmod() function.
+------------------------------------------------------------------------------------------------------------------------Q
+//type of file where filename is accepted through Command Line.
+#include<stdio.h>
+#include<stdlib.h>
+#include<fcntl.h>
+#include<unistd.h>
+#include<sys/stat.h>
+#include<sys/types.h>
+#include<dirent.h>
+int main (int argc, char *argv[])
+{
+struct stat fileStat;
+char fnm[30];
+int fd=0;
+FILE *filename;
+printf("Enter file name= ");
+scanf("%s",fnm);
+if ( ( fd = open (fnm , O_RDONLY) ) == -1){
+perror ( "open " );
+system("pause");
+exit (1) ;
+}
+if(fstat(fd, &fileStat)<0) return 1;
+printf("Information for %s\n",fnm);
+// expected filetype syntax here
+system("pause");
+return 0;
+}
+------------------------------------------------------------------------------------------------------------------------Q
+//Write a C program which display the information of a given file similar to given by the unix/linux command on current directory
+// (1.e file Access permission, file name, file type, User id,group id, file size, file access and modified     time and so on).
+// DO NOT simply DO NOT simply exec is -1<filenamey or system command from the program
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <time.h>
+#include <pwd.h>
+#include <grp.h>
+
+void displayFileInfo(const char *filename) {
+    struct stat fileInfo;
+
+    // Get file information
+    if (stat(filename, &fileInfo) == -1) {
+        perror("Error in stat");
+        return;
+    }
+
+    // Display file information
+    printf("File Information for: %s\n", filename);
+    printf("=====================================\n");
+    printf("File type:");
+
+    // Check file type
+    switch (fileInfo.st_mode & S_IFMT) {
+        case S_IFREG:
+            printf("Regular file\n");
+            break;
+        case S_IFDIR:
+            printf("Directory\n");
+            break;
+        case S_IFLNK:
+            printf("Symbolic link\n");
+            break;
+        default:
+            printf("Unknown file type\n");
+    }
+
+    printf("File size:=%ld bytes\n", (long)fileInfo.st_size);
+    printf("File permissions:=%o\n", (unsigned int)fileInfo.st_mode & 0777);
+    printf("User ID:=%d\n", (int)fileInfo.st_uid);
+    printf("Group ID:=%d\n", (int)fileInfo.st_gid);
+
+    // Get user and group names
+    struct passwd *user_info = getpwuid(fileInfo.st_uid);
+    struct group *group_info = getgrgid(fileInfo.st_gid);
+
+    if (user_info != NULL) {
+        printf("User name:%s\n", user_info->pw_name);
+    } else {
+        printf("User name:Unknown\n");
+    }
+
+    if (group_info != NULL) {
+        printf("Group name:%s\n", group_info->gr_name);
+    } else {
+        printf("Group name:Unknown\n");
+    }
+
+    printf("Last access time:%s", ctime(&fileInfo.st_atime));
+    printf("Last modification time:%s", ctime(&fileInfo.st_mtime));
+    printf("=====================================\n");
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+        return 1;
+    }
+
+    const char *filename = argv[1];
+    displayFileInfo(filename);
+
+    return 0;
+}
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------
+Q
+
+
